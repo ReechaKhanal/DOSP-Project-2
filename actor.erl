@@ -1,6 +1,6 @@
 -module(actor).
 -import(math, []).
--export[start/0, startActors/2, startGossip/2].
+-export[start/0, startActors/2, startActorsPushSum/3, startGossip/2].
 
 start() ->
 
@@ -25,7 +25,7 @@ start() ->
 
     case Algorithm of
         "gossip" -> startGossip(NumberOfNodes, Topology);
-        "pushsum" -> io:format("This is pushsum")
+        "pushsum" -> startPushSum(NumberOfNodes, Topology)
     end.
 
     %GridNeighbors,
@@ -64,6 +64,20 @@ startGossip(NumberOfNodes, Topology) ->
 %%recurseGossip(chosenActor) ->
 %%    io:format("Recursive Gossip").
 
+startPushSum(NumberOfNodes, Topology) ->
+    io:format('Starting the Push Sum Algorithm \n'),
+    io:format('Choosing a random actor from the given number of actors. \n'),
+
+    W = 1,
+    Actors = createActorsPushSum(NumberOfNodes, W),
+    {ChosenActor_PID, ChosenActor} = lists:nth(rand:uniform(length(Actors)), Actors),
+    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
+    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
+
+    io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
+    io:format("\nThe chosen actor process ID is : ~p \n", [ChosenActor_PID]),
+    
+    ChosenActor_PID ! {self(), {0, 0}}.
 
 buildTopology(Topology, Actors, NumberOfNodes, Id) ->
     case Topology of
@@ -164,6 +178,24 @@ createActors(N) ->
 
     Actors.
 
+createActorsPushSum(N, W) ->
+    io:fwrite("Reached the Create Actors Push Sum method\n"),
+    Actors = [  % { {Pid, Ref}, Id }
+        {spawn(actor, startActorsPushSum, [Id, W, N]), Id }
+        || Id <- lists:seq(1, N)
+    ],
+    Actors.
+
+startActorsPushSum(Id, W, N) ->
+    io:fwrite("I am an actor with Id : ~w\n", [Id]),
+    awaitResponsePushSum(Id).
+
+awaitResponsePushSum(Id) ->
+    receive
+        {From, {S, W}} ->
+            io:format("P2 received message \n"),
+            io:format("\n Actor ~p received pair ~p, ~p from process ~p\n", [Id, S, W, From])
+    end.
 
 getNextSquare(NumberOfNodes) ->
     SquaredNumber =  round(math:pow(math:ceil(math:sqrt(NumberOfNodes)),2)),
