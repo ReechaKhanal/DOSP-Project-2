@@ -244,14 +244,16 @@ awaitResponsePushSum(Id, S, W) ->
             W = W + W1,
             
             % Upon receiving, each actor selects a random neighbor and sends it a message.
-            {ChosenActor_PID, ChosenActor} = lists:nth(rand:uniform(length(Actors)), Actors),
-            Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor)
-            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
+            Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
+            {ChosenNeighbor, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
 
+            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
+            S = S/2,
+            W = W/2,
+
+            ChosenNeighbor_PID ! {self(), {S, W, Topology, Actors, NumberOfNodes}}
             % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
             % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
-
-
     end.
 
 getNextSquare(NumberOfNodes) ->
