@@ -38,7 +38,7 @@ startGossip(NumberOfNodes, Topology) ->
     io:format('Choosing a random actor from the given number of actors. \n'),
 
     Actors = createActors(NumberOfNodes),
-    {Reference, ChosenActor} = lists:nth(rand:uniform(length(Actors)), Actors),
+    {ChosenActor, Reference} = lists:nth(rand:uniform(length(Actors)), Actors),
     io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
     Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
     io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]).
@@ -70,30 +70,35 @@ startPushSum(NumberOfNodes, Topology) ->
 
     W = 1,
     Actors = createActorsPushSum(NumberOfNodes, W),
-    {ChosenActor_PID, ChosenActor} = lists:nth(rand:uniform(length(Actors)), Actors),
+    {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
     Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
-    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
+    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology, Neighbors]),
 
     io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
     io:format("\nThe chosen actor process ID is : ~p \n", [ChosenActor_PID]),
     
-    ChosenActor_PID ! {self(), {0, 0}}.
+    ChosenActor_PID ! {self(), {0, 0, Topology, Actors, NumberOfNodes}}.
 
 buildTopology(Topology, Actors, NumberOfNodes, Id) ->
+    Actors_Map = maps:from_list(Actors),
     case Topology of
-        "full" -> findFullNetworkNeighbors(Id, NumberOfNodes);
-        "2D" -> find2DGridNeighbors(Id, NumberOfNodes);
-        "line" -> findLineGridNeighbors(Id, NumberOfNodes);
-        "imp2D" -> find2DIperfectGridNeighbors(Id, NumberOfNodes)
+        "full" -> findFullNetworkNeighbors(Id, NumberOfNodes, Actors_Map);
+        "2D" -> find2DGridNeighbors(Id, NumberOfNodes, Actors_Map);
+        "line" -> findLineGridNeighbors(Id, NumberOfNodes, Actors_Map);
+        "imp2D" -> find2DIperfectGridNeighbors(Id, NumberOfNodes, Actors_Map)
     end.
 
-findFullNetworkNeighbors(Id, N) ->
+findFullNetworkNeighbors(Id, N, Actors_Map) ->
     % considers everyone except itself for neighbors
     io:format("\nEntering into Full\n"),
     Neighbors = lists:subtract(lists:seq(1, N), [Id]),
-    Neighbors.
+    Detailed_Neighbors = [
+        {N, maps:get(N, Actors_Map)}
+        || N <- Neighbors
+    ],
+    Detailed_Neighbors.
 
-find2DGridNeighbors(Id, N) ->
+find2DGridNeighbors(Id, N, Actors_Map) ->
 
     % assumption provided in the question is that the 2D grid is always a perfect square.
     io:format("\nEntering into 2D\n"),
@@ -121,9 +126,14 @@ find2DGridNeighbors(Id, N) ->
         true ->
             Neighbors3 = lists:append([Neighbors2, [Id-Rows]])
     end,
-    Neighbors3.
+    
+    Detailed_Neighbors = [
+        {N, maps:get(N, Actors_Map)}
+        || N <- Neighbors3
+    ],
+    Detailed_Neighbors.
 
-findLineGridNeighbors(Id, N) ->
+findLineGridNeighbors(Id, N, Actors_Map) ->
 
     io:format("\nEntering into Line\n"),
 
@@ -148,13 +158,42 @@ findLineGridNeighbors(Id, N) ->
                     Neighbors = [Id-1, Id+1]
             end
     end,
-    Neighbors.
+    Detailed_Neighbors = [
+        {N, maps:get(N, Actors_Map)}
+        || N <- Neighbors
+    ],
+    Detailed_Neighbors.
 
-find2DIperfectGridNeighbors(Id, N) ->
+find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
 
     io:format("\nEntering into Imperfect 2D\n"),
     
-    ImmediateNeighbors = find2DGridNeighbors(Id, N),
+    %ImmediateNeighbors = find2DGridNeighbors(Id, N, Actors_Map),
+
+    Rows = erlang:trunc(math:sqrt(N)),
+    ModVal = Id rem Rows,
+
+    if
+        ModVal == 1 ->
+            Neighbors = [Id+1];
+        ModVal == 0 ->
+            Neighbors = [Id-1];
+        true ->
+            Neighbors = lists:append([[Id-1], [Id+1]])
+    end,
+
+    if
+        Id+Rows > N ->
+            Neighbors2 = Neighbors;
+        true ->
+            Neighbors2 = lists:append([Neighbors, [Id+Rows]])
+    end,
+    if
+        Id-Rows < 1 ->
+            ImmediateNeighbors = Neighbors2;
+        true ->
+            ImmediateNeighbors = lists:append([Neighbors2, [Id-Rows]])
+    end,
 
     NeighborsToBeIgnored = lists:append([ImmediateNeighbors, [Id]]),
     RemainingNeighbors = lists:subtract(lists:seq(1, N), NeighborsToBeIgnored),
@@ -163,7 +202,11 @@ find2DIperfectGridNeighbors(Id, N) ->
     RandomImmediateNeighbor = lists:nth(rand:uniform(length(ImmediateNeighbors)), ImmediateNeighbors),
 
     FinalNeighbors = lists:append([[RandomRemaningNeighbor], [RandomImmediateNeighbor]]),
-    FinalNeighbors.
+    Detailed_Neighbors = [
+        {N, maps:get(N, Actors_Map)}
+        || N <- FinalNeighbors
+    ],
+    Detailed_Neighbors.
 
 startActors(Id, N) ->
     io:fwrite("I am an actor with Id : ~w\n", [Id]).
@@ -172,7 +215,7 @@ startActors(Id, N) ->
 createActors(N) ->
 
     Actors = [  % { {Pid, Ref}, Id }
-        {spawn(actor, startActors, [Id, N]), Id }
+        {Id, spawn(actor, startActors, [Id, N])}
         || Id <- lists:seq(1, N)
     ],
 
@@ -181,20 +224,34 @@ createActors(N) ->
 createActorsPushSum(N, W) ->
     io:fwrite("Reached the Create Actors Push Sum method\n"),
     Actors = [  % { {Pid, Ref}, Id }
-        {spawn(actor, startActorsPushSum, [Id, W, N]), Id }
+        {Id, spawn(actor, startActorsPushSum, [Id, W, N])}
         || Id <- lists:seq(1, N)
     ],
     Actors.
 
 startActorsPushSum(Id, W, N) ->
     io:fwrite("I am an actor with Id : ~w\n", [Id]),
-    awaitResponsePushSum(Id).
+    awaitResponsePushSum(Id, Id, W).
 
-awaitResponsePushSum(Id) ->
+awaitResponsePushSum(Id, S, W) ->
     receive
-        {From, {S, W}} ->
+        {From, {S1, W1, Topology, Actors, NumberOfNodes}} ->
             io:format("P2 received message \n"),
-            io:format("\n Actor ~p received pair ~p, ~p from process ~p\n", [Id, S, W, From])
+            io:format("\n Actor ~p received pair ~p, ~p from process ~p\n", [Id, S1, W1, From]),
+
+            % Upon receiving this the actor should add the received pair to its own corresponding values
+            S = S + S1,
+            W = W + W1,
+            
+            % Upon receiving, each actor selects a random neighbor and sends it a message.
+            {ChosenActor_PID, ChosenActor} = lists:nth(rand:uniform(length(Actors)), Actors),
+            Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor)
+            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
+
+            % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
+            % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
+
+
     end.
 
 getNextSquare(NumberOfNodes) ->
