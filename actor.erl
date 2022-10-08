@@ -1,6 +1,6 @@
 -module(actor).
 -import(math, []).
--export[start/0, startActors/2, startActorsPushSum/3, startGossip/2].
+-export[start/0, startActors/2, startActorsPushSum/2, startGossip/2].
 
 start() ->
 
@@ -65,9 +65,9 @@ startGossip(NumberOfNodes, Topology) ->
 %%    io:format("Recursive Gossip").
 
 startPushSum(NumberOfNodes, Topology) ->
+    io:format("\n**********************************\n"),
     io:format('Starting the Push Sum Algorithm \n'),
-    io:format('Choosing a random actor from the given number of actors. \n'),
-
+    io:format("\n**********************************\n"),
     W = 1,
     Actors = createActorsPushSum(NumberOfNodes, W),
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
@@ -224,34 +224,52 @@ createActors(N) ->
 createActorsPushSum(N, W) ->
     io:fwrite("Reached the Create Actors Push Sum method\n"),
     Actors = [  % { {Pid, Ref}, Id }
-        {Id, spawn(actor, startActorsPushSum, [Id, W, N])}
+        {Id, spawn(actor, startActorsPushSum, [Id, W])}
         || Id <- lists:seq(1, N)
     ],
     Actors.
 
-startActorsPushSum(Id, W, N) ->
+startActorsPushSum(Id, W) ->
     io:fwrite("I am an actor with Id : ~w\n", [Id]),
-    awaitResponsePushSum(Id, Id, W).
+    awaitResponsePushSum(Id, Id, W, 0, 0).
 
-awaitResponsePushSum(Id, S, W) ->
+awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
     receive
         {From, {S1, W1, Topology, Actors, NumberOfNodes}} ->
-            io:format("P2 received message \n"),
-            io:format("\n Actor ~p received pair ~p, ~p from process ~p\n", [Id, S1, W1, From]),
+
+            if
+                Count == 3 ->
+                    io:fwrite("YAAASSS WE GOT IT"),
+                    exit("Test");
+                true ->
+                    io:fwrite("We are not there yet")
+            end,
 
             % Upon receiving this the actor should add the received pair to its own corresponding values
-            S = S + S1,
-            W = W + W1,
+            S2 = S + S1,
+            W2 = W + W1,
             
             % Upon receiving, each actor selects a random neighbor and sends it a message.
             Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
-            {ChosenNeighbor, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+            {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
 
-            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
-            S = S/2,
-            W = W/2,
+            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
+            S3 = S2 / 2,
+            W3 = W2 / 2,
 
-            ChosenNeighbor_PID ! {self(), {S, W, Topology, Actors, NumberOfNodes}}
+            ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes}},
+
+            Curr_ratio = S / W,
+            Difference = math:pow(10, -10),
+            if
+                abs(Curr_ratio - Prev_ratio) < Difference ->
+                    io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
+                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
+                true ->
+                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
+            end
+
+            % awaitResponsePushSum(Id, S3, W3, Curr_ratio, New_Count)
             % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
             % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
     end.
