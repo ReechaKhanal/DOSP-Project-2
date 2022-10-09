@@ -44,28 +44,14 @@ startGossip(NumberOfNodes, Topology) ->
     Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
     io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
     
-    ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
-
-    receive
-        {val, From} ->
-            io:format("OKKKAKA")
-    end.
+    ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}}.
     
     %checkActorsAlive(Actors_PID).
     % Check if all the actors are alive
 
-checkActorsAlive(Actors) ->
-
-    Actors_PID = [ A_PID|| {_, A_PID} <- Actors ],
-    State = [ is_process_alive(Pid) || Pid <- Actors_PID ],
-    Status = lists:member(true, State),
-    
-    if
-        Status == true ->
-            checkActorsAlive(Actors);
-        true ->
-            io:fwrite("FINALLY!")
-    end.
+getAliveActors(Actors) ->
+    Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
+    Alive_Actors.
 
 startPushSum(NumberOfNodes, Topology) ->
     
@@ -224,17 +210,17 @@ awaitResponseGossip(Id, Count) ->
                     io:fwrite("YAAASSS WE GOT IT\n");
                 true ->
                     io:format("Reached ~p\n", [Id]),
+
                     % Upon receiving, each actor selects a random neighbor and sends it a message.
-                    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
+                    Alive_Actors = getAliveActors(Actors),
+
+                    Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
                     {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
 
-                    ChosenNeighbor_PID ! {self(), {Topology, Actors, NumberOfNodes}}
-            end,
-            From ! {job_done,self()};
-        {job_done, From} ->
-            io:fwrite("got the response back\n")
-    end,
-    awaitResponseGossip(Id, Count+1).
+                    ChosenNeighbor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
+                    awaitResponseGossip(Id, Count+1)
+            end
+    end.
 
 createActors(N) ->
 
