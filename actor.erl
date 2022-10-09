@@ -45,9 +45,19 @@ startGossip(NumberOfNodes, Topology) ->
     io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
     
     ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}}.
-    
-    %checkActorsAlive(Actors_PID).
-    % Check if all the actors are alive
+    %checkActorsAlive(Actors).
+
+checkActorsAlive(Actors) ->
+    Actor_Status = [is_process_alive(A_PID) || {A, A_PID} <- Actors],
+    io:fwrite("~w~n",[Actor_Status]),
+    Status = lists:member(true, Actor_Status),
+
+    if
+        Status == true ->
+            checkActorsAlive(Actors);            
+        true ->
+            io:fwrite("DONEE!!!")
+    end.    
 
 getAliveActors(Actors) ->
     Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
@@ -206,7 +216,7 @@ awaitResponseGossip(Id, Count) ->
         {From, {Topology, Actors, NumberOfNodes}} ->
             io:format("Process: ~p || Count: ~p\n", [Id, Count]),
             if
-                Count > 4 ->
+                Count == 10 ->
                     io:fwrite("YAAASSS WE GOT IT\n");
                 true ->
                     io:format("Reached ~p\n", [Id]),
@@ -248,39 +258,36 @@ awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
 
             if
                 Count == 3 ->
-                    io:fwrite("YAAASSS WE GOT IT"),
-                    exit("Test");
+                    io:fwrite("YAAASSS WE GOT IT");
                 true ->
-                    io:fwrite("We are not there yet")
-            end,
+                    % Upon receiving this the actor should add the received pair to its own corresponding values
+                    S2 = S + S1,
+                    W2 = W + W1,
+                    
+                    % Upon receiving, each actor selects a random neighbor and sends it a message.
+                    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
+                    {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
 
-            % Upon receiving this the actor should add the received pair to its own corresponding values
-            S2 = S + S1,
-            W2 = W + W1,
-            
-            % Upon receiving, each actor selects a random neighbor and sends it a message.
-            Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
-            {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+                    % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
+                    S3 = S2 / 2,
+                    W3 = W2 / 2,
 
-            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
-            S3 = S2 / 2,
-            W3 = W2 / 2,
+                    ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes}},
 
-            ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes}},
+                    Curr_ratio = S / W,
+                    Difference = math:pow(10, -10),
+                    if
+                        abs(Curr_ratio - Prev_ratio) < Difference ->
+                            io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
+                            awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
+                        true ->
+                            awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
+                    end
 
-            Curr_ratio = S / W,
-            Difference = math:pow(10, -10),
-            if
-                abs(Curr_ratio - Prev_ratio) < Difference ->
-                    io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
-                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
-                true ->
-                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
+                    % awaitResponsePushSum(Id, S3, W3, Curr_ratio, New_Count)
+                    % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
+                    % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
             end
-
-            % awaitResponsePushSum(Id, S3, W3, Curr_ratio, New_Count)
-            % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
-            % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
     end.
 
 getNextSquare(NumberOfNodes) ->
