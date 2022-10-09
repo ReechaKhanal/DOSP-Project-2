@@ -1,6 +1,6 @@
 -module(actor).
 -import(math, []).
--export[start/0, startActors/2, startActorsPushSum/2, startGossip/2].
+-export[start/0, startActors/1, startActorsPushSum/2, startGossip/2].
 
 start() ->
 
@@ -38,36 +38,39 @@ startGossip(NumberOfNodes, Topology) ->
     io:format('Choosing a random actor from the given number of actors. \n'),
 
     Actors = createActors(NumberOfNodes),
-    {ChosenActor, Reference} = lists:nth(rand:uniform(length(Actors)), Actors),
+    {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
     io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
+    io:format("\nThe chosen actor PID is : ~p \n", [ChosenActor_PID]),
     Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
-    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]).
+    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
+    
+    ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
 
+    receive
+        {val, From} ->
+            io:format("OKKKAKA")
+    end.
+    
+    %checkActorsAlive(Actors_PID).
+    % Check if all the actors are alive
 
-%%    recurseGossip(chosenActor).
+checkActorsAlive(Actors) ->
 
-    % The count for the chosen actor has to be updated now.
-    % A function for that has to be written
-
-% START: Pick the first actor and tell the actor a gossip.
-% STEP: Each actor selects a random neighbor and tells it the rumor.
-% Termination: Each actor keeps track of rumors and how many times has he heard the rumor.
-
-% Gossip type algorithms can be used both for group communication and for aggregate computation.
-% Gossip Algorithm for information propagation | The Gossip algorithm involves the following:
-% 1. Starting: A participant(actor) told/sent a rumor (fact) by the main process
-% 2. Step: Each actor selects a random neighbor and tells it the rumor.
-% 3. Termination: Each actor keeps track of rumors and how many times he has heard the rumor.
-%    It stops transmitting once it has heard the rumor 10 times (10 is arbitrary, you can select other values).
-
-
-%%recurseGossip(chosenActor) ->
-%%    io:format("Recursive Gossip").
+    Actors_PID = [ A_PID|| {_, A_PID} <- Actors ],
+    State = [ is_process_alive(Pid) || Pid <- Actors_PID ],
+    Status = lists:member(true, State),
+    
+    if
+        Status == true ->
+            checkActorsAlive(Actors);
+        true ->
+            io:fwrite("FINALLY!")
+    end.
 
 startPushSum(NumberOfNodes, Topology) ->
-    io:format("\n**********************************\n"),
+    
     io:format('Starting the Push Sum Algorithm \n'),
-    io:format("\n**********************************\n"),
+    
     W = 1,
     Actors = createActorsPushSum(NumberOfNodes, W),
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
@@ -90,7 +93,6 @@ buildTopology(Topology, Actors, NumberOfNodes, Id) ->
 
 findFullNetworkNeighbors(Id, N, Actors_Map) ->
     % considers everyone except itself for neighbors
-    io:format("\nEntering into Full\n"),
     Neighbors = lists:subtract(lists:seq(1, N), [Id]),
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
@@ -208,21 +210,42 @@ find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
     ],
     Detailed_Neighbors.
 
-startActors(Id, N) ->
-    io:fwrite("I am an actor with Id : ~w\n", [Id]).
+startActors(Id) ->
+    io:fwrite("START I am an actor with Id : ~w\n", [Id]),
+    awaitResponseGossip(Id, 0),
+    io:fwrite("END ending Process : ~w\n", [Id]).
 
+awaitResponseGossip(Id, Count) ->
+    receive
+        {From, {Topology, Actors, NumberOfNodes}} ->
+            io:format("Process: ~p || Count: ~p\n", [Id, Count]),
+            if
+                Count > 4 ->
+                    io:fwrite("YAAASSS WE GOT IT\n");
+                true ->
+                    io:format("Reached ~p\n", [Id]),
+                    % Upon receiving, each actor selects a random neighbor and sends it a message.
+                    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
+                    {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+
+                    ChosenNeighbor_PID ! {self(), {Topology, Actors, NumberOfNodes}}
+            end,
+            From ! {job_done,self()};
+        {job_done, From} ->
+            io:fwrite("got the response back\n")
+    end,
+    awaitResponseGossip(Id, Count+1).
 
 createActors(N) ->
 
     Actors = [  % { {Pid, Ref}, Id }
-        {Id, spawn(actor, startActors, [Id, N])}
+        {Id, spawn(actor, startActors, [Id])}
         || Id <- lists:seq(1, N)
     ],
 
     Actors.
 
 createActorsPushSum(N, W) ->
-    io:fwrite("Reached the Create Actors Push Sum method\n"),
     Actors = [  % { {Pid, Ref}, Id }
         {Id, spawn(actor, startActorsPushSum, [Id, W])}
         || Id <- lists:seq(1, N)
