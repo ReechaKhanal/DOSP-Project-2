@@ -74,7 +74,6 @@ findFullNetworkNeighbors(Id, N, Actors_Map) ->
 find2DGridNeighbors(Id, N, Actors_Map) ->
 
     % assumption provided in the question is that the 2D grid is always a perfect square.
-    io:format("\nEntering into 2D\n"),
     Rows = erlang:trunc(math:sqrt(N)),
     ModVal = Id rem Rows,
 
@@ -102,13 +101,11 @@ find2DGridNeighbors(Id, N, Actors_Map) ->
     
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
-        || N <- Neighbors3
+        || N <- Neighbors3, maps:is_key(N, Actors_Map)
     ],
     Detailed_Neighbors.
 
 findLineGridNeighbors(Id, N, Actors_Map) ->
-
-    io:format("\nEntering into Line\n"),
 
     if
         Id > N -> 
@@ -133,16 +130,12 @@ findLineGridNeighbors(Id, N, Actors_Map) ->
     end,
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
-        || N <- Neighbors
+        || N <- Neighbors, maps:is_key(N, Actors_Map)
     ],
     Detailed_Neighbors.
 
 find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
-
-    io:format("\nEntering into Imperfect 2D\n"),
     
-    %ImmediateNeighbors = find2DGridNeighbors(Id, N, Actors_Map),
-
     Rows = erlang:trunc(math:sqrt(N)),
     ModVal = Id rem Rows,
 
@@ -177,7 +170,7 @@ find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
     FinalNeighbors = lists:append([[RandomRemaningNeighbor], [RandomImmediateNeighbor]]),
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
-        || N <- FinalNeighbors
+        || N <- FinalNeighbors, maps:is_key(N, Actors_Map)
     ],
     Detailed_Neighbors.
 
