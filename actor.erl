@@ -45,13 +45,14 @@ startPushSum(NumberOfNodes, Topology) ->
     W = 1,
     Actors = createActorsPushSum(NumberOfNodes, W),
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
-    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
-    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology, Neighbors]),
-
     io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
-    io:format("\nThe chosen actor process ID is : ~p \n", [ChosenActor_PID]),
     
-    ChosenActor_PID ! {self(), {0, 0, Topology, Actors, NumberOfNodes}}.
+    ChosenActor_PID ! {self(), {0, 0, Topology, Actors, NumberOfNodes, self()}},
+    
+    receive
+        {_, {ok, Child_Id, Child_Count}} ->
+            io:format("\nCONVERGED ---> Process ~p converged with ~p subsequent very small changes on its ratio.\n", [Child_Id, Child_Count])
+    end.
 
 buildTopology(Topology, Actors, NumberOfNodes, Id) ->
     Actors_Map = maps:from_list(Actors),
@@ -184,7 +185,7 @@ awaitResponseGossip(Id, Count) ->
         {From, {Topology, Actors, NumberOfNodes}} ->
             if
                 Count == 10 ->
-                    io:format("YAAASSS WE GOT IT IN:Process: ~p || Count: ~p\n", [Id, Count]);
+                    io:format("CONVERGED: in Process: ~p || Count: ~p\n", [Id, Count]);
                 true ->
                     spawn(actor, sendGossip, [self(), Topology, Actors, NumberOfNodes, Id]),
                     awaitResponseGossip(Id, Count+1)
@@ -228,16 +229,16 @@ createActorsPushSum(N, W) ->
     Actors.
 
 startActorsPushSum(Id, W) ->
-    io:fwrite("I am an actor with Id : ~w\n", [Id]),
+    %io:fwrite("I am an actor with Id : ~w\n", [Id]),
     awaitResponsePushSum(Id, Id, W, 0, 0).
 
 awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
     receive
-        {From, {S1, W1, Topology, Actors, NumberOfNodes}} ->
+        {_, {S1, W1, Topology, Actors, NumberOfNodes, Main}} ->
 
             if
                 Count == 3 ->
-                    io:fwrite("YAAASSS WE GOT IT");
+                    Main ! {self(), {ok, Id, Count}};
                 true ->
                     % Upon receiving this the actor should add the received pair to its own corresponding values
                     S2 = S + S1,
@@ -251,21 +252,17 @@ awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
                     S3 = S2 / 2,
                     W3 = W2 / 2,
 
-                    ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes}},
+                    ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes, Main}},
 
                     Curr_ratio = S / W,
                     Difference = math:pow(10, -10),
                     if
                         abs(Curr_ratio - Prev_ratio) < Difference ->
-                            io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
+                            %io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
                             awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
                         true ->
                             awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
                     end
-
-                    % awaitResponsePushSum(Id, S3, W3, Curr_ratio, New_Count)
-                    % SUM ESTIMATE: At any given moment of time, the sum estimate is s/w where s and w are teh current values of an actor
-                    % TERMINATION: If an actor's ratio s/w did not change more than 10^-10 in 3 consecutive rounds the actor terminates.
             end
     end.
 
