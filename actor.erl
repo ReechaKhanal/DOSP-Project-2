@@ -173,22 +173,37 @@ findImperfect3DGridNeighbors(Id, N, Actors_Map) ->
         Id+Rows > N ->
             Neighbors2 = Neighbors;
         true ->
-            Neighbors2 = lists:append([Neighbors, [Id+Rows]])
+            if 
+                ModVal == 1 ->
+                    Neighbors2 = lists:append([Neighbors, [Id+Rows], [Id+Rows+1]]);
+                ModVal == 0 ->
+                    Neighbors2 = lists:append([Neighbors, [Id+Rows], [Id+Rows-1]]);
+                true ->
+                    Neighbors2 = lists:append([Neighbors, [Id+Rows], [Id+Rows-1], [Id+Rows+1]])
+            end
     end,
     if
         Id-Rows < 1 ->
             ImmediateNeighbors = Neighbors2;
         true ->
-            ImmediateNeighbors = lists:append([Neighbors2, [Id-Rows]])
+            if 
+                ModVal == 1 ->
+                    ImmediateNeighbors = lists:append([Neighbors2, [Id-Rows], [Id-Rows+1]]);
+                ModVal == 0 ->
+                    ImmediateNeighbors = lists:append([Neighbors2, [Id-Rows], [Id-Rows-1]]);
+                true ->
+                    ImmediateNeighbors = lists:append([Neighbors2, [Id-Rows], [Id-Rows-1], [Id-Rows+1]])
+            end
     end,
 
     NeighborsToBeIgnored = lists:append([ImmediateNeighbors, [Id]]),
     RemainingNeighbors = lists:subtract(lists:seq(1, N), NeighborsToBeIgnored),
 
     RandomRemaningNeighbor = lists:nth(rand:uniform(length(RemainingNeighbors)), RemainingNeighbors),
-    RandomImmediateNeighbor = lists:nth(rand:uniform(length(ImmediateNeighbors)), ImmediateNeighbors),
+    %RandomImmediateNeighbor = lists:nth(rand:uniform(length(ImmediateNeighbors)), ImmediateNeighbors),
 
-    FinalNeighbors = lists:append([[RandomRemaningNeighbor], [RandomImmediateNeighbor]]),
+    FinalNeighbors = lists:append([[RandomRemaningNeighbor], ImmediateNeighbors]),
+
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
         || N <- FinalNeighbors, maps:is_key(N, Actors_Map)
