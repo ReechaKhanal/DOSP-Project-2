@@ -11,7 +11,7 @@ start() ->
     if
         Topology == "2D" ->
             NumberOfNodes = getNextSquare(Nodes);
-        Topology == "imp2D" ->
+        Topology == "imp3D" ->
             NumberOfNodes = getNextSquare(Nodes);
         true ->
             NumberOfNodes = Nodes
@@ -81,7 +81,7 @@ buildTopology(Topology, Actors, NumberOfNodes, Id) ->
         "full" -> findFullNetworkNeighbors(Id, NumberOfNodes, Actors_Map);
         "2D" -> find2DGridNeighbors(Id, NumberOfNodes, Actors_Map);
         "line" -> findLineGridNeighbors(Id, NumberOfNodes, Actors_Map);
-        "imp2D" -> find2DIperfectGridNeighbors(Id, NumberOfNodes, Actors_Map)
+        "imp3D" -> findImperfect3DGridNeighbors(Id, NumberOfNodes, Actors_Map)
     end.
 
 findFullNetworkNeighbors(Id, N, Actors_Map) ->
@@ -139,8 +139,7 @@ findLineGridNeighbors(Id, N, Actors_Map) ->
                 Id - 1 < 1 ->
                     Neighbors = [];
                 true ->
-                    Neighbors = [Id-1],
-                    io:fwrite("~w",[Id-1])
+                    Neighbors = [Id-1]
             end;           
         true ->
             if
@@ -156,7 +155,7 @@ findLineGridNeighbors(Id, N, Actors_Map) ->
     ],
     Detailed_Neighbors.
 
-find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
+findImperfect3DGridNeighbors(Id, N, Actors_Map) ->
     
     Rows = erlang:trunc(math:sqrt(N)),
     ModVal = Id rem Rows,
@@ -265,24 +264,31 @@ awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
                     W2 = W + W1,
                     
                     % Upon receiving, each actor selects a random neighbor and sends it a message.
-                    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, Id),
-                    {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+                    Alive_Actors = getAliveActors(Actors),
+                    Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
 
-                    % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
-                    S3 = S2 / 2,
-                    W3 = W2 / 2,
-
-                    ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes, Main}},
-
-                    Curr_ratio = S / W,
-                    Difference = math:pow(10, -10),
                     if
-                        abs(Curr_ratio - Prev_ratio) < Difference ->
-                            %io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
-                            awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
+                        Neighbors == [] ->
+                            exit(0);
                         true ->
-                            awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
-                    end
+                            {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+
+                            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
+                            S3 = S2 / 2,
+                            W3 = W2 / 2,
+
+                            ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes, Main}},
+
+                            Curr_ratio = S / W,
+                            Difference = math:pow(10, -10),
+                            if
+                                abs(Curr_ratio - Prev_ratio) < Difference ->
+                                    %io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
+                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
+                                true ->
+                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
+                            end
+                    end                    
             end
     end.
 
