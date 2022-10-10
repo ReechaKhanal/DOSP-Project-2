@@ -32,8 +32,13 @@ startGossip(NumberOfNodes, Topology) ->
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
     io:format("\nThe Actor Chosen by the Main Process is : ~p \n\n", [ChosenActor]),
 
+    %start time
+    Start_Time = erlang:system_time(millisecond),
     ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
-    checkAliveActors(Actors).
+    checkAliveActors(Actors),
+    %End time
+    End_Time = erlang:system_time(millisecond),
+    io:format("\nTime Taken in milliseconds: ~p\n", [End_Time - Start_Time]).
 
 checkAliveActors(Actors) ->
     Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
@@ -58,12 +63,17 @@ startPushSum(NumberOfNodes, Topology) ->
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
     io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
     
+    %start time
+    Start_Time = erlang:system_time(millisecond),
+
     ChosenActor_PID ! {self(), {0, 0, Topology, Actors, NumberOfNodes, self()}},
-    
     receive
         {_, {ok, Child_Id, Child_Count}} ->
             io:format("\nCONVERGED ---> Process ~p converged with ~p subsequent very small changes on its ratio.\n", [Child_Id, Child_Count])
-    end.
+    end,
+    %End time
+    End_Time = erlang:system_time(millisecond),
+    io:format("\nTime Taken in milliseconds: ~p\n", [End_Time - Start_Time]).
 
 buildTopology(Topology, Actors, NumberOfNodes, Id) ->
     Actors_Map = maps:from_list(Actors),
