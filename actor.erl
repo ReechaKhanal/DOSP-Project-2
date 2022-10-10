@@ -1,6 +1,6 @@
 -module(actor).
 -import(math, []).
--export[start/0, startActors/1, startActorsPushSum/2, startGossip/2].
+-export[start/0, startActors/1, startActorsPushSum/2, startGossip/2, sendGossip/5].
 
 start() ->
 
@@ -21,43 +21,18 @@ start() ->
     io:format("Topology: ~p\n", [Topology]), % Topology Options: Full Network, 2D Grid, Line, Imperfect 3D Grid
     io:format("Algorithm: ~p\n", [Algorithm]), % Algorithm Options: Gossip, Push-Sum
 
-    %Actors = createActors(NumberOfNodes).
-
     case Algorithm of
         "gossip" -> startGossip(NumberOfNodes, Topology);
         "pushsum" -> startPushSum(NumberOfNodes, Topology)
     end.
 
-    %GridNeighbors,
-    %LineNeighbors,
-    %ImperfectGridNeighbors,
-    %FullNetworkNeighbors.
-
 startGossip(NumberOfNodes, Topology) ->
     io:format('Starting the Gossip Algorithm \n'),
-    io:format('Choosing a random actor from the given number of actors. \n'),
-
     Actors = createActors(NumberOfNodes),
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
-    io:format("\nThe chosen actor is : ~p \n", [ChosenActor]),
-    io:format("\nThe chosen actor PID is : ~p \n", [ChosenActor_PID]),
-    Neighbors = buildTopology(Topology, Actors, NumberOfNodes, ChosenActor),
-    io:format("\nThe neighbors of the chosen node ~p for the topology ~p are ~p\n",[ChosenActor,Topology,Neighbors]),
-    
+    io:format("\nThe Actor Chosen by the Main Process is : ~p \n\n", [ChosenActor]),
+
     ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}}.
-    %checkActorsAlive(Actors).
-
-checkActorsAlive(Actors) ->
-    Actor_Status = [is_process_alive(A_PID) || {A, A_PID} <- Actors],
-    io:fwrite("~w~n",[Actor_Status]),
-    Status = lists:member(true, Actor_Status),
-
-    if
-        Status == true ->
-            checkActorsAlive(Actors);            
-        true ->
-            io:fwrite("DONEE!!!")
-    end.    
 
 getAliveActors(Actors) ->
     Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
@@ -92,7 +67,7 @@ findFullNetworkNeighbors(Id, N, Actors_Map) ->
     Neighbors = lists:subtract(lists:seq(1, N), [Id]),
     Detailed_Neighbors = [
         {N, maps:get(N, Actors_Map)}
-        || N <- Neighbors
+        || N <- Neighbors, maps:is_key(N, Actors_Map)
     ],
     Detailed_Neighbors.
 
@@ -214,23 +189,34 @@ startActors(Id) ->
 awaitResponseGossip(Id, Count) ->
     receive
         {From, {Topology, Actors, NumberOfNodes}} ->
-            io:format("Process: ~p || Count: ~p\n", [Id, Count]),
             if
                 Count == 10 ->
-                    io:fwrite("YAAASSS WE GOT IT\n");
+                    io:format("YAAASSS WE GOT IT IN:Process: ~p || Count: ~p\n", [Id, Count]);
                 true ->
-                    io:format("Reached ~p\n", [Id]),
-
-                    % Upon receiving, each actor selects a random neighbor and sends it a message.
-                    Alive_Actors = getAliveActors(Actors),
-
-                    Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
-                    {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
-
-                    ChosenNeighbor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
+                    spawn(actor, sendGossip, [self(), Topology, Actors, NumberOfNodes, Id]),
                     awaitResponseGossip(Id, Count+1)
             end
     end.
+
+sendGossip(Current, Topology, Actors, NumberOfNodes, Id) ->
+    Status = is_process_alive(Current),
+    if
+        Status == true ->
+            Alive_Actors = getAliveActors(Actors),
+
+            Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
+            if
+                Neighbors == [] ->
+                    exit(0);
+                true ->
+                    {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+                    ChosenNeighbor_PID ! {Current, {Topology, Actors, NumberOfNodes}},
+                    sendGossip(Current, Topology, Actors, NumberOfNodes, Id)
+            end;
+        true ->
+            exit(0)
+    end.  
+    
 
 createActors(N) ->
 
