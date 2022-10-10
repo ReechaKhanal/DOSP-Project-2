@@ -32,7 +32,18 @@ startGossip(NumberOfNodes, Topology) ->
     {ChosenActor, ChosenActor_PID} = lists:nth(rand:uniform(length(Actors)), Actors),
     io:format("\nThe Actor Chosen by the Main Process is : ~p \n\n", [ChosenActor]),
 
-    ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}}.
+    ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
+    checkAliveActors(Actors).
+
+checkAliveActors(Actors) ->
+    Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
+
+    if
+        Alive_Actors == [] ->
+            io:format("\nCONVERGED: All Processes received the rumor 10 times.\n");
+        true ->
+            checkAliveActors(Actors)
+    end.
 
 getAliveActors(Actors) ->
     Alive_Actors = [{A, A_PID} || {A, A_PID} <- Actors, is_process_alive(A_PID) == true],
@@ -176,16 +187,15 @@ find2DIperfectGridNeighbors(Id, N, Actors_Map) ->
     Detailed_Neighbors.
 
 startActors(Id) ->
-    io:fwrite("START I am an actor with Id : ~w\n", [Id]),
-    awaitResponseGossip(Id, 0),
-    io:fwrite("END ending Process : ~w\n", [Id]).
+    awaitResponseGossip(Id, 0).
 
 awaitResponseGossip(Id, Count) ->
     receive
         {From, {Topology, Actors, NumberOfNodes}} ->
             if
                 Count == 10 ->
-                    io:format("CONVERGED: in Process: ~p || Count: ~p\n", [Id, Count]);
+                    %io:format("CONVERGED: in Process: ~p || Count: ~p\n", [Id, Count]);
+                    exit(0);
                 true ->
                     spawn(actor, sendGossip, [self(), Topology, Actors, NumberOfNodes, Id]),
                     awaitResponseGossip(Id, Count+1)
