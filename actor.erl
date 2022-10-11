@@ -285,7 +285,6 @@ awaitResponsePushSum(Id, S, W, Prev_ratio, Count, Last_Spawned_Process_Id) ->
                         Neighbors == [] ->
                             exit(0);
                         true ->
-
                             % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
                             S3 = S2 / 2,
                             W3 = W2 / 2,
