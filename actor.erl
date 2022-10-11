@@ -1,6 +1,6 @@
 -module(actor).
 -import(math, []).
--export[start/0, startActors/1, startActorsPushSum/2, startGossip/2, sendGossip/5].
+-export[start/0, startActors/1, startActorsPushSum/2, startGossip/2, sendGossip/5, sendPushSumMessages/8].
 
 start() ->
 
@@ -37,6 +37,7 @@ startGossip(NumberOfNodes, Topology) ->
     ChosenActor_PID ! {self(), {Topology, Actors, NumberOfNodes}},
     checkAliveActors(Actors),
     %End time
+    io:format("All Processes received the rumor 10 times.\n"),
     End_Time = erlang:system_time(millisecond),
     io:format("\nTime Taken in milliseconds: ~p\n", [End_Time - Start_Time]).
 
@@ -45,7 +46,7 @@ checkAliveActors(Actors) ->
 
     if
         Alive_Actors == [] ->
-            io:format("\nCONVERGED: All Processes received the rumor 10 times.\n");
+            io:format("\nCONVERGED: ");
         true ->
             checkAliveActors(Actors)
     end.
@@ -67,11 +68,8 @@ startPushSum(NumberOfNodes, Topology) ->
     Start_Time = erlang:system_time(millisecond),
 
     ChosenActor_PID ! {self(), {0, 0, Topology, Actors, NumberOfNodes, self()}},
-    receive
-        {_, {ok, Child_Id, Child_Count}} ->
-            io:format("\nCONVERGED ---> Process ~p converged with ~p subsequent very small changes on its ratio.\n", [Child_Id, Child_Count])
-    end,
-    %End time
+    checkAliveActors(Actors),
+    io:format("All Processes converged with the same s/w ratio.\n"),
     End_Time = erlang:system_time(millisecond),
     io:format("\nTime Taken in milliseconds: ~p\n", [End_Time - Start_Time]).
 
@@ -264,21 +262,22 @@ createActorsPushSum(N, W) ->
 
 startActorsPushSum(Id, W) ->
     %io:fwrite("I am an actor with Id : ~w\n", [Id]),
-    awaitResponsePushSum(Id, Id, W, 0, 0).
+    awaitResponsePushSum(Id, Id, W, 0, 0, self()).
 
-awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
+
+awaitResponsePushSum(Id, S, W, Prev_ratio, Count, Last_Spawned_Process_Id) ->
     receive
-        {_, {S1, W1, Topology, Actors, NumberOfNodes, Main}} ->
+        {From, {S1, W1, Topology, Actors, NumberOfNodes, Main}} ->
 
             if
-                Count == 3 ->
-                    Main ! {self(), {ok, Id, Count}};
+                Count > 1 ->
+                    exit(0);
                 true ->
                     % Upon receiving this the actor should add the received pair to its own corresponding values
                     S2 = S + S1,
                     W2 = W + W1,
                     
-                    % Upon receiving, each actor selects a random neighbor and sends it a message.
+                    %Upon receiving, each actor selects a random neighbor and sends it a message.
                     Alive_Actors = getAliveActors(Actors),
                     Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
 
@@ -286,25 +285,55 @@ awaitResponsePushSum(Id, S, W, Prev_ratio, Count) ->
                         Neighbors == [] ->
                             exit(0);
                         true ->
-                            {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
 
-                            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                        
+                            % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message
                             S3 = S2 / 2,
                             W3 = W2 / 2,
 
-                            ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes, Main}},
-
+                            if
+                                From == Main ->
+                                    Spawned_Process_Id = spawn(actor, sendPushSumMessages, [self(), Actors, Topology, NumberOfNodes, Id, S3, W3, Main]);
+                                true ->
+                                    Last_Spawned_Process_Id ! {exit},
+                                    Spawned_Process_Id = spawn(actor, sendPushSumMessages, [self(), Actors, Topology, NumberOfNodes, Id, S3, W3, Main])
+                            end,
+                            
                             Curr_ratio = S / W,
                             Difference = math:pow(10, -10),
                             if
                                 abs(Curr_ratio - Prev_ratio) < Difference ->
                                     %io:format("\nPrevious Ratio: ~p & Current Ratio ~p & Difference is ~p\n",[Prev_ratio, Curr_ratio, abs(Curr_ratio - Prev_ratio)]),
-                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1);
+                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, Count + 1, Spawned_Process_Id);
                                 true ->
-                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0)
+                                    awaitResponsePushSum(Id, S3, W3, Curr_ratio, 0, Spawned_Process_Id)
                             end
                     end                    
             end
+    end.
+
+sendPushSumMessages(Current, Actors, Topology, NumberOfNodes, Id, S3, W3, Main) ->
+
+    receive
+        _->
+            exit(0)
+    after 0 ->
+        Status = is_process_alive(Current),
+        if
+            Status == true ->
+                Alive_Actors = getAliveActors(Actors),
+                Neighbors = buildTopology(Topology, Alive_Actors, NumberOfNodes, Id),
+                if
+                    Neighbors == [] ->
+                        exit(0);
+                    true ->
+                        {_, ChosenNeighbor_PID} = lists:nth(rand:uniform(length(Neighbors)), Neighbors),
+                        % SEND: When sending a message to another actor, half of s and w is kept by the sending actor and half is placed in the message                     
+                        ChosenNeighbor_PID ! {self(), {S3, W3, Topology, Actors, NumberOfNodes, Main}},
+                        sendPushSumMessages(Current, Actors, Topology, NumberOfNodes, Id, S3, W3, Main)
+                end;
+            true ->
+                exit(0)
+        end
     end.
 
 getNextSquare(NumberOfNodes) ->
